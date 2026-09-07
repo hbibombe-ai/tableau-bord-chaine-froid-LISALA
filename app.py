@@ -4,6 +4,7 @@ import io
 import json
 import re
 import unicodedata
+from html import escape
 from datetime import datetime
 from pathlib import Path
 
@@ -34,9 +35,11 @@ st.markdown("""
 .hero:after{content:"❄";position:absolute;right:2rem;top:-1.8rem;font-size:9rem;color:rgba(255,255,255,.09)}.hero small{color:#a5f3fc;font-weight:800;letter-spacing:.16em}.hero h1{color:white;margin:.2rem 0;font-size:2.15rem}.hero p{color:#dff8ff;margin:.35rem 0 0}
 .cards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:11px;margin:1rem 0}.card{background:white;border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:16px;padding:.9rem;box-shadow:0 6px 18px rgba(25,70,100,.07)}.label{font-size:.75rem;color:#5d7185;font-weight:750;min-height:2.15em}.value{font-size:1.55rem;color:#10253d;font-weight:850}.hint{font-size:.68rem;color:var(--accent);font-weight:700}
 .module-note{background:linear-gradient(90deg,#e9f8fd,#edfbf7);border:1px solid #cce8ef;border-left:5px solid var(--cyan);border-radius:12px;padding:.7rem .9rem;margin:.5rem 0;color:#274b63}
+.decision-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:.8rem 0 1rem}.decision{background:#fff;border:1px solid var(--line);border-radius:16px;padding:1rem;box-shadow:0 6px 18px rgba(25,70,100,.07)}.decision h4{margin:0 0 .35rem;color:#183b56}.decision p{margin:.2rem 0;color:#52677a;font-size:.86rem}.badge{display:inline-block;border-radius:999px;padding:.22rem .55rem;font-size:.72rem;font-weight:800}.critical{background:#fee2e2;color:#991b1b}.high{background:#ffedd5;color:#9a3412}.watch{background:#fef9c3;color:#854d0e}.good{background:#dcfce7;color:#166534}
+.insight{border-radius:13px;padding:.8rem 1rem;margin:.45rem 0;border-left:5px solid var(--accent);background:#fff;box-shadow:0 3px 12px rgba(25,70,100,.05)}.insight strong{color:#183b56}.insight span{color:#52677a}.legend-box{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:.65rem .8rem;color:#52677a;font-size:.78rem}
 [data-testid="stSidebar"]{background:linear-gradient(#fff,#edf8fb);border-right:1px solid var(--line)}div[data-testid="stRadio"] label{background:white;border:1px solid #d7e5ec;border-radius:999px;padding:.3rem .55rem}div[data-testid="stRadio"] label:has(input:checked){background:#dff7fa;border-color:#22b8cf;font-weight:700;color:#075985}
 div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{background:white;border:1px solid var(--line);border-radius:16px;padding:.2rem;box-shadow:0 5px 16px rgba(25,70,100,.06)}.stDownloadButton button,.stButton button{border-radius:11px;min-height:2.6rem;font-weight:700}
-@media(max-width:950px){.cards{grid-template-columns:repeat(2,1fr)}.hero h1{font-size:1.55rem}}@media(max-width:520px){.block-container{padding:.55rem}.cards{gap:7px}.card{padding:.7rem}.value{font-size:1.25rem}.hero{padding:1.15rem}.hero h1{font-size:1.35rem}}
+@media(max-width:950px){.cards{grid-template-columns:repeat(2,1fr)}.decision-grid{grid-template-columns:1fr}.hero h1{font-size:1.55rem}}@media(max-width:520px){.block-container{padding:.55rem}.cards{gap:7px}.card{padding:.7rem}.value{font-size:1.25rem}.hero{padding:1.15rem}.hero h1{font-size:1.35rem}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -147,6 +150,10 @@ if sites.empty: st.warning("Aucune donnée pour les filtres sélectionnés."); s
 fridges=sites.refrigerateurs.fillna(0).sum(); known=sites.refrigerateur_fonctionnel|sites.refrigerateur_en_panne
 functional=sites.loc[sites.refrigerateur_fonctionnel,"refrigerateurs"].fillna(0).sum(); functionality=functional/fridges if fridges else np.nan
 tag_rate=sites.fridge_tag.mean(); maintenance=sites.maintenance_preventive.mean(); stockouts=int(stocks.rupture.sum())
+stock_observed=stocks.stock_disponible.notna().sum(); stockout_rate=stocks.rupture.sum()/stock_observed if stock_observed else np.nan
+low_stock_rate=(stocks.loc[stocks.couverture_semaines.notna(),"couverture_semaines"]<1).mean() if stocks.couverture_semaines.notna().any() else np.nan
+fridge_reporting=sites.refrigerateurs.notna().mean(); status_reporting=(sites.statut_refrigerateur!="Non renseigné").mean()
+planned_sessions=sites.seances_planifiees.sum(); completed_sessions=sites.seances_realisees.sum(); session_rate=completed_sessions/planned_sessions if planned_sessions else np.nan
 st.markdown(f'''<div class="cards">
 <div class="card" style="--accent:#0891b2"><div class="label">Réfrigérateurs recensés</div><div class="value">{integer(fridges)}</div><div class="hint">équipements déclarés</div></div>
 <div class="card" style="--accent:#059669"><div class="label">Fonctionnalité</div><div class="value">{pct(functionality)}</div><div class="hint">équipements fonctionnels</div></div>
@@ -155,11 +162,48 @@ st.markdown(f'''<div class="cards">
 <div class="card" style="--accent:#d97706"><div class="label">Maintenance préventive</div><div class="value">{pct(maintenance)}</div><div class="hint">aires couvertes</div></div>
 <div class="card" style="--accent:#e11d48"><div class="label">Ruptures de stock</div><div class="value">{stockouts}</div><div class="hint">vaccin × aire de santé</div></div></div>''',unsafe_allow_html=True)
 
-module=st.radio("Module",["Vue générale","Stocks vaccins","Équipements","Maintenance et alertes","Activités","Données"],horizontal=True,label_visibility="collapsed")
-notes={"Vue générale":"Situation consolidée de la chaîne du froid dans les zones sélectionnées.","Stocks vaccins":"Besoins, stocks disponibles, semaines de couverture et ruptures par antigène.","Équipements":"Répartition et état fonctionnel des réfrigérateurs par zone et aire de santé.","Maintenance et alertes":"Liste opérationnelle des équipements et stocks nécessitant une action.","Activités":"Mise en relation des séances, supervisions et disponibilité des équipements.","Données":"Tables détaillées prêtes pour contrôle et téléchargement."}
+module=st.radio("Module",["Synthèse décisionnelle","Vue générale","Stocks vaccins","Équipements","Maintenance et alertes","Activités","Données"],horizontal=True,label_visibility="collapsed")
+notes={"Synthèse décisionnelle":"Lecture rapide des indicateurs phares, priorités et actions recommandées.","Vue générale":"Situation consolidée de la chaîne du froid dans les zones sélectionnées.","Stocks vaccins":"Besoins, stocks disponibles, semaines de couverture et ruptures par antigène.","Équipements":"Répartition et état fonctionnel des réfrigérateurs par zone et aire de santé.","Maintenance et alertes":"Liste opérationnelle des équipements et stocks nécessitant une action.","Activités":"Mise en relation des séances, supervisions et disponibilité des équipements.","Données":"Tables détaillées prêtes pour contrôle et téléchargement."}
 st.markdown(f'<div class="module-note">{notes[module]}</div>',unsafe_allow_html=True)
 
-if module=="Vue générale":
+if module=="Synthèse décisionnelle":
+    critical_count=int(sites.refrigerateur_en_panne.sum()+stocks.rupture.sum())
+    quality_ok=fridge_reporting>=.9 and status_reporting>=.9 and stock_observed/max(len(stocks),1)>=.9
+    overall_level="Critique" if critical_count>0 else ("À surveiller" if maintenance<.8 or tag_rate<.8 or not quality_ok else "Satisfaisant")
+    level_class="critical" if overall_level=="Critique" else ("watch" if overall_level=="À surveiller" else "good")
+    st.markdown(f'''<div class="decision-grid">
+    <div class="decision"><span class="badge {level_class}">{overall_level}</span><h4>Situation opérationnelle</h4><p>{critical_count} situation(s) critique(s) détectée(s), incluant les pannes et ruptures déclarées.</p></div>
+    <div class="decision"><span class="badge {'good' if quality_ok else 'high'}">{'Données suffisantes' if quality_ok else 'Données à compléter'}</span><h4>Fiabilité de la lecture</h4><p>{pct(fridge_reporting)} des aires ont renseigné le nombre d’équipements et {pct(stock_observed/max(len(stocks),1))} les stocks.</p></div>
+    <div class="decision"><span class="badge {'good' if maintenance>=.8 else 'watch'}">{pct(maintenance)}</span><h4>Prévention des pannes</h4><p>Part des aires déclarant une maintenance préventive. Cible indicative affichée : au moins 80 %.</p></div>
+    </div>''',unsafe_allow_html=True)
+
+    st.subheader("Informations importantes")
+    insights=[]
+    if stockouts:
+        top=stocks[stocks.rupture].groupby("vaccin").size().sort_values(ascending=False)
+        insights.append(("#dc2626","Ruptures de stock",f"{stockouts} rupture(s) déclarée(s). L’antigène le plus touché est {escape(str(top.index[0]))} dans {int(top.iloc[0])} aire(s)."))
+    elif stock_observed: insights.append(("#059669","Stocks","Aucune rupture n’est déclarée dans les données actuellement filtrées."))
+    else: insights.append(("#d97706","Stocks non renseignés","Aucun stock exploitable n’est disponible ; la situation des ruptures ne peut pas être confirmée."))
+    if fridges==0: insights.append(("#d97706","Inventaire des équipements incomplet","Aucun réfrigérateur n’est recensé. Compléter les colonnes de nombre et d’état avant toute décision."))
+    elif not pd.isna(functionality) and functionality<.8: insights.append(("#dc2626","Fonctionnalité insuffisante",f"Le taux de fonctionnalité est de {pct(functionality)}, sous la cible indicative de 80 %."))
+    if tag_rate<.8: insights.append(("#2563eb","Suivi de température",f"Seulement {pct(tag_rate)} des aires déclarent un Fridge-tag disponible."))
+    if maintenance<.8: insights.append(("#d97706","Maintenance préventive",f"La couverture de maintenance est de {pct(maintenance)} ; prioriser les aires non couvertes."))
+    if not pd.isna(session_rate) and session_rate<.8: insights.append(("#7c3aed","Continuité des services",f"{pct(session_rate)} des séances planifiées sont déclarées réalisées."))
+    for color,title,message in insights[:6]: st.markdown(f'<div class="insight" style="--accent:{color}"><strong>{title}</strong><br><span>{message}</span></div>',unsafe_allow_html=True)
+
+    zone_sites=sites.groupby("zone",as_index=False).agg(aires=("aire_sante","nunique"),maintenance=("maintenance_preventive","mean"),fridge_tag=("fridge_tag","mean"),pannes=("refrigerateur_en_panne","sum"))
+    zone_stock=stocks.groupby("zone",as_index=False).agg(ruptures=("rupture","sum"),couverture=("couverture_semaines","mean"))
+    priorities=zone_sites.merge(zone_stock,on="zone",how="left").fillna({"ruptures":0,"pannes":0})
+    priorities["score_priorite"]=np.minimum(priorities.ruptures*8,40)+np.minimum(priorities.pannes*20,30)+(1-priorities.maintenance)*20+(1-priorities.fridge_tag)*10
+    priorities["priorite"]=pd.cut(priorities.score_priorite,[-1,15,30,45,np.inf],labels=["Faible","Modérée","Élevée","Critique"])
+    priorities["maintenance_pct"]=priorities.maintenance*100; priorities["fridge_tag_pct"]=priorities.fridge_tag*100
+    priorities=priorities.sort_values("score_priorite",ascending=False)
+    c1,c2=st.columns([1.35,1])
+    fig=px.bar(priorities,x="zone",y="score_priorite",color="priorite",title="Priorisation opérationnelle par zone",color_discrete_map={"Faible":"#16a34a","Modérée":"#eab308","Élevée":"#f97316","Critique":"#dc2626"})
+    c1.plotly_chart(style(fig,360),width="stretch")
+    c2.dataframe(priorities[["zone","priorite","score_priorite","ruptures","pannes","maintenance_pct","fridge_tag_pct"]],width="stretch",height=360,hide_index=True,column_config={"score_priorite":st.column_config.ProgressColumn("Score",min_value=0,max_value=100,format="%.0f"),"maintenance_pct":st.column_config.NumberColumn("Maintenance",format="%.0f%%"),"fridge_tag_pct":st.column_config.NumberColumn("Fridge-tag",format="%.0f%%")})
+    st.markdown('<div class="legend-box"><b>Règles de lecture indicatives :</b> rupture ou panne = action immédiate ; couverture de stock &lt; 1 semaine = risque élevé ; fonctionnalité, maintenance ou Fridge-tag &lt; 80 % = attention. Les seuils doivent être validés par le PEV.</div>',unsafe_allow_html=True)
+elif module=="Vue générale":
     by_zone=sites.groupby("zone",as_index=False).agg(population=("population","sum"),refrigerateurs=("refrigerateurs","sum"),aires=("aire_sante","nunique"),fridge_tag=("fridge_tag","mean"),maintenance=("maintenance_preventive","mean"))
     rupt=stocks.groupby("zone",as_index=False).agg(ruptures=("rupture","sum")); by_zone=by_zone.merge(rupt,on="zone",how="left")
     c1,c2=st.columns(2)
