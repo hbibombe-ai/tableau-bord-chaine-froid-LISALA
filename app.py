@@ -105,12 +105,16 @@ def parse(matrices: dict[str, list[list]]) -> tuple[pd.DataFrame, pd.DataFrame]:
             sites.append({
                 "zone":zone.title(), "aire_sante":area, "population":pop,
                 "supervisions_prevues":number(cell(raw,3)), "supervisions_realisees":number(cell(raw,4)),
+                "seances_planifiees_fixes":number(cell(raw,9)), "seances_planifiees_avancees":number(cell(raw,10)), "seances_planifiees_mobiles":number(cell(raw,11)),
+                "seances_realisees_fixes":number(cell(raw,12)), "seances_realisees_avancees":number(cell(raw,14)), "seances_realisees_mobiles":number(cell(raw,16)),
                 "seances_planifiees":sum(np.nan_to_num([number(cell(raw,i)) for i in (9,10,11)])),
                 "seances_realisees":sum(np.nan_to_num([number(cell(raw,i)) for i in (12,14,16)])),
                 "refrigerateurs":fridge_count, "statut_refrigerateur":str(cell(raw,80) or "Non renseigné"),
                 "refrigerateur_en_panne":broken, "refrigerateur_fonctionnel":functional,
                 "date_debut_panne":cell(raw,81), "fridge_tag":yes(cell(raw,82)), "maintenance_preventive":yes(cell(raw,83)),
-                "sites_surveillance":number(cell(raw,74)), "visites_surveillance":sum(np.nan_to_num([number(cell(raw,i)) for i in (75,76,77,78)])),
+                "sites_surveillance":number(cell(raw,74)),
+                "visites_thp":number(cell(raw,75)), "visites_hp":number(cell(raw,76)), "visites_mp":number(cell(raw,77)), "visites_bp":number(cell(raw,78)),
+                "visites_surveillance":sum(np.nan_to_num([number(cell(raw,i)) for i in (75,76,77,78)])),
             })
             for vaccine, start in VACCINES.items():
                 need, available, weeks = number(cell(raw,start)), number(cell(raw,start+1)), number(cell(raw,start+2))
@@ -140,11 +144,18 @@ except Exception as exc:
 
 with st.sidebar:
     st.caption("Source : "+source); st.subheader("Filtres")
-    zones=sorted(sites.zone.unique()); z=st.multiselect("Zone de santé",zones,default=zones)
-    sites=sites[sites.zone.isin(z)]; stocks=stocks[stocks.zone.isin(z)]
-    areas=sorted(sites.aire_sante.unique()); a=st.multiselect("Aire de santé",areas,default=areas)
-    sites=sites[sites.aire_sante.isin(a)]; stocks=stocks[stocks.aire_sante.isin(a)]
-    vaccines=sorted(stocks.vaccin.unique()); v=st.multiselect("Vaccin",vaccines,default=vaccines); stocks=stocks[stocks.vaccin.isin(v)]
+    zones=sorted(sites.zone.dropna().unique())
+    selected_zone=st.selectbox("Zone de santé",["Toutes les zones"]+zones)
+    if selected_zone!="Toutes les zones":
+        sites=sites[sites.zone==selected_zone]; stocks=stocks[stocks.zone==selected_zone]
+    areas=sorted(sites.aire_sante.dropna().unique())
+    selected_area=st.selectbox("Aire de santé",["Toutes les aires"]+areas)
+    if selected_area!="Toutes les aires":
+        sites=sites[sites.aire_sante==selected_area]; stocks=stocks[stocks.aire_sante==selected_area]
+    vaccines=sorted(stocks.vaccin.dropna().unique())
+    selected_vaccine=st.selectbox("Vaccin ou intrant",["Tous les vaccins"]+vaccines)
+    if selected_vaccine!="Tous les vaccins": stocks=stocks[stocks.vaccin==selected_vaccine]
+    st.caption(f"Périmètre : {selected_zone} · {selected_area} · {selected_vaccine}")
 
 if sites.empty: st.warning("Aucune donnée pour les filtres sélectionnés."); st.stop()
 fridges=sites.refrigerateurs.fillna(0).sum(); known=sites.refrigerateur_fonctionnel|sites.refrigerateur_en_panne
@@ -154,6 +165,8 @@ stock_observed=stocks.stock_disponible.notna().sum(); stockout_rate=stocks.ruptu
 low_stock_rate=(stocks.loc[stocks.couverture_semaines.notna(),"couverture_semaines"]<1).mean() if stocks.couverture_semaines.notna().any() else np.nan
 fridge_reporting=sites.refrigerateurs.notna().mean(); status_reporting=(sites.statut_refrigerateur!="Non renseigné").mean()
 planned_sessions=sites.seances_planifiees.sum(); completed_sessions=sites.seances_realisees.sum(); session_rate=completed_sessions/planned_sessions if planned_sessions else np.nan
+surveillance_sites=sites.sites_surveillance.fillna(0).sum(); surveillance_visits=sites.visites_surveillance.fillna(0).sum(); visits_per_site=surveillance_visits/surveillance_sites if surveillance_sites else np.nan
+supervisions_planned=sites.supervisions_prevues.fillna(0).sum(); supervisions_done=sites.supervisions_realisees.fillna(0).sum(); supervision_rate=supervisions_done/supervisions_planned if supervisions_planned else np.nan
 st.markdown(f'''<div class="cards">
 <div class="card" style="--accent:#0891b2"><div class="label">Réfrigérateurs recensés</div><div class="value">{integer(fridges)}</div><div class="hint">équipements déclarés</div></div>
 <div class="card" style="--accent:#059669"><div class="label">Fonctionnalité</div><div class="value">{pct(functionality)}</div><div class="hint">équipements fonctionnels</div></div>
@@ -162,8 +175,8 @@ st.markdown(f'''<div class="cards">
 <div class="card" style="--accent:#d97706"><div class="label">Maintenance préventive</div><div class="value">{pct(maintenance)}</div><div class="hint">aires couvertes</div></div>
 <div class="card" style="--accent:#e11d48"><div class="label">Ruptures de stock</div><div class="value">{stockouts}</div><div class="hint">vaccin × aire de santé</div></div></div>''',unsafe_allow_html=True)
 
-module=st.radio("Module",["Synthèse décisionnelle","Vue générale","Stocks vaccins","Équipements","Maintenance et alertes","Activités","Données"],horizontal=True,label_visibility="collapsed")
-notes={"Synthèse décisionnelle":"Lecture rapide des indicateurs phares, priorités et actions recommandées.","Vue générale":"Situation consolidée de la chaîne du froid dans les zones sélectionnées.","Stocks vaccins":"Besoins, stocks disponibles, semaines de couverture et ruptures par antigène.","Équipements":"Répartition et état fonctionnel des réfrigérateurs par zone et aire de santé.","Maintenance et alertes":"Liste opérationnelle des équipements et stocks nécessitant une action.","Activités":"Mise en relation des séances, supervisions et disponibilité des équipements.","Données":"Tables détaillées prêtes pour contrôle et téléchargement."}
+module=st.radio("Module",["Synthèse décisionnelle","Vue générale","Stocks vaccins","Équipements","Maintenance et alertes","Séances et surveillance","Données"],horizontal=True,label_visibility="collapsed")
+notes={"Synthèse décisionnelle":"Lecture rapide des indicateurs phares, priorités et actions recommandées.","Vue générale":"Situation consolidée de la chaîne du froid dans les zones sélectionnées.","Stocks vaccins":"Besoins, stocks disponibles, semaines de couverture et ruptures par antigène.","Équipements":"Répartition et état fonctionnel des réfrigérateurs par zone et aire de santé.","Maintenance et alertes":"Liste opérationnelle des équipements et stocks nécessitant une action.","Séances et surveillance":"Réalisation des séances fixes, avancées et mobiles, supervisions et visites de surveillance active.","Données":"Tables détaillées prêtes pour contrôle et téléchargement."}
 st.markdown(f'<div class="module-note">{notes[module]}</div>',unsafe_allow_html=True)
 
 if module=="Synthèse décisionnelle":
@@ -189,6 +202,8 @@ if module=="Synthèse décisionnelle":
     if tag_rate<.8: insights.append(("#2563eb","Suivi de température",f"Seulement {pct(tag_rate)} des aires déclarent un Fridge-tag disponible."))
     if maintenance<.8: insights.append(("#d97706","Maintenance préventive",f"La couverture de maintenance est de {pct(maintenance)} ; prioriser les aires non couvertes."))
     if not pd.isna(session_rate) and session_rate<.8: insights.append(("#7c3aed","Continuité des services",f"{pct(session_rate)} des séances planifiées sont déclarées réalisées."))
+    if surveillance_sites and surveillance_visits==0: insights.append(("#7c3aed","Surveillance active",f"{integer(surveillance_sites)} site(s) sont recensés, mais aucune visite n’est déclarée."))
+    if not pd.isna(supervision_rate) and supervision_rate<.8: insights.append(("#0891b2","Supervision",f"Le taux de réalisation des supervisions est de {pct(supervision_rate)}."))
     for color,title,message in insights[:6]: st.markdown(f'<div class="insight" style="--accent:{color}"><strong>{title}</strong><br><span>{message}</span></div>',unsafe_allow_html=True)
 
     zone_sites=sites.groupby("zone",as_index=False).agg(aires=("aire_sante","nunique"),maintenance=("maintenance_preventive","mean"),fridge_tag=("fridge_tag","mean"),pannes=("refrigerateur_en_panne","sum"))
@@ -233,10 +248,44 @@ elif module=="Maintenance et alertes":
     else:
         st.error(f"{(alert_df.Niveau=='Critique').sum()} alertes critiques et {(alert_df.Niveau=='Élevée').sum()} alertes élevées.")
         st.dataframe(alert_df,width="stretch",hide_index=True); st.download_button("Télécharger les alertes",csv_bytes(alert_df),"alertes_chaine_froid.csv","text/csv")
-elif module=="Activités":
-    act=sites.groupby("zone",as_index=False).agg(seances_planifiees=("seances_planifiees","sum"),seances_realisees=("seances_realisees","sum"),supervisions_prevues=("supervisions_prevues","sum"),supervisions_realisees=("supervisions_realisees","sum")); act["taux_seances"]=act.seances_realisees/act.seances_planifiees.replace(0,np.nan); act["taux_supervision"]=act.supervisions_realisees/act.supervisions_prevues.replace(0,np.nan)
-    chart=act.melt("zone",value_vars=["taux_seances","taux_supervision"],var_name="Indicateur",value_name="Taux"); fig=px.bar(chart,x="zone",y="Taux",color="Indicateur",barmode="group",title="Réalisation des activités"); fig.update_yaxes(tickformat=".0%")
-    st.plotly_chart(style(fig),width="stretch"); st.dataframe(act,width="stretch",hide_index=True)
+elif module=="Séances et surveillance":
+    st.markdown(f'''<div class="cards">
+    <div class="card" style="--accent:#2563eb"><div class="label">Séances planifiées</div><div class="value">{integer(planned_sessions)}</div><div class="hint">fixes + avancées + mobiles</div></div>
+    <div class="card" style="--accent:#059669"><div class="label">Séances réalisées</div><div class="value">{integer(completed_sessions)}</div><div class="hint">total déclaré</div></div>
+    <div class="card" style="--accent:#7c3aed"><div class="label">Taux de réalisation</div><div class="value">{pct(session_rate)}</div><div class="hint">réalisées / planifiées</div></div>
+    <div class="card" style="--accent:#0891b2"><div class="label">Sites de surveillance</div><div class="value">{integer(surveillance_sites)}</div><div class="hint">sites recensés</div></div>
+    <div class="card" style="--accent:#d97706"><div class="label">Visites réalisées</div><div class="value">{integer(surveillance_visits)}</div><div class="hint">THP + HP + MP + BP</div></div>
+    <div class="card" style="--accent:#e11d48"><div class="label">Supervisions réalisées</div><div class="value">{pct(supervision_rate)}</div><div class="hint">réalisées / prévues</div></div></div>''',unsafe_allow_html=True)
+
+    modality=pd.DataFrame({
+        "Modalité":["Fixe","Avancée","Mobile"],
+        "Planifiées":[sites.seances_planifiees_fixes.sum(),sites.seances_planifiees_avancees.sum(),sites.seances_planifiees_mobiles.sum()],
+        "Réalisées":[sites.seances_realisees_fixes.sum(),sites.seances_realisees_avancees.sum(),sites.seances_realisees_mobiles.sum()],
+    })
+    modality["Taux de réalisation"]=modality["Réalisées"]/modality["Planifiées"].replace(0,np.nan)
+    visits=pd.DataFrame({"Type de visite":["THP","HP","MP","BP"],"Visites réalisées":[sites.visites_thp.sum(),sites.visites_hp.sum(),sites.visites_mp.sum(),sites.visites_bp.sum()]})
+    c1,c2=st.columns(2)
+    mod_long=modality.melt("Modalité",value_vars=["Planifiées","Réalisées"],var_name="Statut",value_name="Nombre")
+    c1.plotly_chart(style(px.bar(mod_long,x="Modalité",y="Nombre",color="Statut",barmode="group",title="Séances par stratégie",color_discrete_map={"Planifiées":"#93c5fd","Réalisées":"#059669"}),380),width="stretch")
+    c2.plotly_chart(style(px.bar(visits,x="Type de visite",y="Visites réalisées",color="Type de visite",title="Visites de surveillance active",color_discrete_sequence=["#0891b2","#2563eb","#7c3aed","#d97706"]),380),width="stretch")
+
+    act=sites.groupby("zone",as_index=False).agg(
+        seances_planifiees=("seances_planifiees","sum"),seances_realisees=("seances_realisees","sum"),
+        supervisions_prevues=("supervisions_prevues","sum"),supervisions_realisees=("supervisions_realisees","sum"),
+        sites_surveillance=("sites_surveillance","sum"),visites_surveillance=("visites_surveillance","sum"),
+        visites_thp=("visites_thp","sum"),visites_hp=("visites_hp","sum"),visites_mp=("visites_mp","sum"),visites_bp=("visites_bp","sum"))
+    act["taux_seances"]=act.seances_realisees/act.seances_planifiees.replace(0,np.nan)
+    act["taux_supervision"]=act.supervisions_realisees/act.supervisions_prevues.replace(0,np.nan)
+    act["visites_par_site"]=act.visites_surveillance/act.sites_surveillance.replace(0,np.nan)
+    chart=act.melt("zone",value_vars=["taux_seances","taux_supervision"],var_name="Indicateur",value_name="Taux")
+    fig=px.bar(chart,x="zone",y="Taux",color="Indicateur",barmode="group",title="Réalisation des séances et supervisions par zone",color_discrete_map={"taux_seances":"#059669","taux_supervision":"#2563eb"}); fig.update_yaxes(tickformat=".0%")
+    st.plotly_chart(style(fig),width="stretch")
+    st.subheader("Détail par zone")
+    act_display=act.copy(); act_display["taux_seances_pct"]=act_display.taux_seances*100; act_display["taux_supervision_pct"]=act_display.taux_supervision*100
+    act_display=act_display.drop(columns=["taux_seances","taux_supervision"])
+    st.dataframe(act_display,width="stretch",hide_index=True,column_config={"taux_seances_pct":st.column_config.NumberColumn("Taux séances",format="%.1f%%"),"taux_supervision_pct":st.column_config.NumberColumn("Taux supervision",format="%.1f%%"),"visites_par_site":st.column_config.NumberColumn("Visites/site",format="%.1f")})
+    st.caption("Le Google Sheet ne contient pas de cible de visites de surveillance. Le tableau présente donc le volume réalisé et le nombre moyen de visites par site, sans calculer un taux de couverture non défini.")
+    st.download_button("Télécharger les séances et la surveillance",csv_bytes(act),"seances_surveillance.csv","text/csv")
 else:
     tab1,tab2=st.tabs(["Équipements et activités","Stocks"])
     tab1.dataframe(sites,width="stretch",hide_index=True); tab1.download_button("Télécharger les équipements",csv_bytes(sites),"equipements_chaine_froid.csv","text/csv")
