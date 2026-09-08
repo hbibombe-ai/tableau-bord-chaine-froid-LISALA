@@ -41,6 +41,17 @@ st.markdown("""
 div[data-testid="stRadio"] label{background:white;border:1px solid #cbdadd;border-radius:9px;padding:.34rem .58rem;box-shadow:0 2px 6px rgba(21,82,104,.04)}div[data-testid="stRadio"] label:has(input:checked){background:var(--coral);border-color:var(--coral);font-weight:800;color:white}
 div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{background:white;border:2px solid #cbdadd;border-radius:16px;padding:.25rem;box-shadow:0 5px 16px rgba(25,70,100,.05)}.stDownloadButton button,.stButton button{border-radius:9px;min-height:2.6rem;font-weight:800;border-color:var(--navy);color:var(--navy)}
 @media(max-width:950px){.cards{grid-template-columns:repeat(2,1fr)}.decision-grid{grid-template-columns:1fr}.hero h1{font-size:1.55rem}}@media(max-width:520px){.block-container{padding:.55rem}.cards{gap:7px}.card{padding:.7rem}.value{font-size:1.25rem}.hero{padding:1.15rem}.hero h1{font-size:1.35rem}}
+/* Thème éditorial clair inspiré du modèle fourni */
+.stApp{background:#f5f8f8}.block-container{max-width:1500px;padding-top:1rem}
+[data-testid="stSidebar"]{background:#fff;border-right:1px solid #d9e6e8;box-shadow:5px 0 22px rgba(23,73,88,.05)}[data-testid="stSidebar"] *{color:#234754}
+[data-testid="stSidebar"] .stButton>button{background:#0aaeb5;color:#fff;border:0;box-shadow:none}
+.hero{background:#fff;border:1px solid #dbe7e8;border-top:6px solid #0bb8c4;border-left:1px solid #dbe7e8;color:#173f4d;box-shadow:0 8px 25px rgba(21,77,91,.08)}
+.hero:after{color:rgba(11,184,196,.12)}.hero small{color:#0b9eaa}.hero h1{color:#173f4d}.hero p{color:#607781}
+.cards .card{background:#fff!important;border:1px solid #dce8e9;border-top:4px solid var(--accent);box-shadow:0 7px 18px rgba(22,73,87,.07)}
+.cards .card:nth-child(1),.cards .card:nth-child(5){--accent:#ff7767}.cards .card:nth-child(2),.cards .card:nth-child(4),.cards .card:nth-child(6){--accent:#0db8b5}.cards .card:nth-child(3){--accent:#f4bd4d}
+.cards .label{color:#58717b!important}.cards .value{color:#075f69!important}.cards .hint{color:#71858d!important}
+[data-testid="stPlotlyChart"],[data-testid="stDataFrame"]{background:#fff;border:1px solid #dce8e9;border-radius:14px;padding:.35rem;box-shadow:0 6px 17px rgba(22,73,87,.05)}
+div[role="radiogroup"] label:has(input:checked){background:#0babb3!important;color:#fff!important;border-color:#0babb3!important}
 </style>
 """, unsafe_allow_html=True)
 
