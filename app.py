@@ -14,7 +14,6 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from google.oauth2.service_account import Credentials
-from streamlit_autorefresh import st_autorefresh
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -144,7 +143,7 @@ def style(fig, height=410):
 
 
 st.markdown('<section class="hero"><small>ANTENNE PEV LISALA</small><h1>Tableau de bord de la chaîne du froid</h1><p>Disponibilité des vaccins, fonctionnalité des équipements, maintenance et continuité des services.</p></section>', unsafe_allow_html=True)
-cfg = google_config(); st_autorefresh(interval=5*60*1000,key="refresh_google_inventory")
+cfg = google_config()
 try:
     if cfg:
         if st.sidebar.button("Actualiser maintenant", width="stretch"): load_google.clear()
