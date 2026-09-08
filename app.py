@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import json
 import re
@@ -142,6 +143,18 @@ def style(fig, height=410):
     fig.update_xaxes(gridcolor="#eaf1f5"); fig.update_yaxes(gridcolor="#eaf1f5"); return fig
 
 
+_hero_image = Path(__file__).parent / "assets" / "gestion-chaine-froid.jpg"
+_hero_b64 = base64.b64encode(_hero_image.read_bytes()).decode("ascii")
+st.markdown(f"""
+<style>
+.hero{{min-height:235px;display:flex;flex-direction:column;justify-content:center;
+background-image:linear-gradient(90deg,rgba(7,42,58,.94) 0%,rgba(7,58,70,.76) 43%,rgba(7,58,70,.20) 100%),url("data:image/jpeg;base64,{_hero_b64}");
+background-size:cover;background-position:center center;border:0;border-left:8px solid #10bfae}}
+.hero:after{{display:none}}.hero small{{color:#75eee3;text-shadow:0 1px 2px rgba(0,0,0,.35)}}
+.hero h1{{color:#fff;font-size:2.35rem;text-shadow:0 2px 9px rgba(0,0,0,.55)}}
+.hero p{{color:#eefcfc;max-width:680px;text-shadow:0 1px 5px rgba(0,0,0,.55)}}
+@media(max-width:700px){{.hero{{min-height:205px;background-position:62% center}}.hero h1{{font-size:1.65rem}}}}
+</style>""", unsafe_allow_html=True)
 st.markdown('<section class="hero"><small>ANTENNE PEV LISALA</small><h1>Tableau de bord de la chaîne du froid</h1><p>Disponibilité des vaccins, fonctionnalité des équipements, maintenance et continuité des services.</p></section>', unsafe_allow_html=True)
 cfg = google_config()
 try:
